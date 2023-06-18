@@ -127,6 +127,15 @@ def genetico(x_matrix, funcao, iteracoes=50, p_recomb=0.1, p_mutacao = 0.01):
         np.putmask(new_pop, mut_mask, mut_gen)
         # Nova População
         x_pop = np.copy(new_pop)
+        if(i == iteracoes - 1):
+             # Cálculo de Fitness e inserção no dataframe
+            x_fitness = np.array([-funcao(candidato) for candidato in x_pop]).reshape(-1, 1)
+            iter_atual = np.tile([i+1], x_matrix.shape[0]).reshape(-1, 1)
+            df_data = np.concatenate((x_pop, x_fitness, iter_atual), axis=1)
+            df_evolution = pd.concat([df_evolution, pd.DataFrame(df_data, columns=col)]).reset_index(drop=True)
+            # Captura de fitness médio e fitness mínimo por iteração
+            avg_fitness = np.append(avg_fitness, np.mean(x_fitness))
+            min_fitness = np.append(min_fitness, np.min(x_fitness))
 
     elapsed_time = (time() - time_init) * 1000
     fitness_metrics = np.concatenate(([avg_fitness], [min_fitness]), axis = 0).transpose()
@@ -149,21 +158,29 @@ def treina_genetico(dim=2, funcao='esfera', iteracoes=50, taxa_recomb=0.1, taxa_
     range_xyz = [-30, 30]
     
     df_evol, df_fit, train_time = genetico(init, f, iteracoes=iteracoes,
-                                           p_recomb=taxa_recomb, p_mutacao=taxa_mut)    
+                                           p_recomb=taxa_recomb, p_mutacao=taxa_mut) 
+
+    title_scatter = f"Evolução da população para função {funcao} em R{dim} "
+    title_scatter = title_scatter + f"| Recomb. = {taxa_recomb * 100}% | Mut. = {taxa_mut * 100}%<br><sup>"
+    title_scatter = title_scatter + f"Tempo gasto para {iteracoes} iterações: {train_time:.3f} ms</sup>"
+
+    title_line = f"Evolução da aptidão para função {funcao} em R{dim} "
+    title_line = title_line + f"| Recomb. = {taxa_recomb * 100}% | Mut. = {taxa_mut * 100}%"
+    title_line = title_line + f"<br><sup>Tempo gasto para {iteracoes} iterações: {train_time:.3f} ms</sup>"
 
     if(dim == 3):
         fig1 = px.scatter_3d(df_evol, x='x', y='y', z='z', color='fitness', animation_frame='iter',
                         color_continuous_scale=px.colors.sequential.YlGnBu,
                         range_y=range_xyz, range_x=range_xyz, range_z=range_xyz, range_color=range_color,
-                        title=f"")
+                        title=title_scatter)
     else:
         fig1 = px.scatter(df_evol, x='x', y='y', color='fitness', animation_frame='iter',
                         color_continuous_scale=px.colors.sequential.YlGnBu,
                         range_y=range_xyz, range_x=range_xyz, range_color=range_color,
-                        title=f"Evolução da população para função {funcao} em R{dim} | Recomb. = {taxa_recomb * 100}% | Mut. = {taxa_mut * 100}%<br><sup>Tempo gasto para {iteracoes} iterações: {train_time:.3f} ms</sup>")
+                        title=title_scatter)
 
     fig2 = px.line(df_fit, category_orders={"variable": ["Média", "Mínima"]},
-                   title=f"Evolução da aptidão para função {funcao} em R{dim} | Recomb. = {taxa_recomb * 100}% | Mut. = {taxa_mut * 100}%<br><sup>Tempo gasto para {iteracoes} iterações: {train_time:.3f} ms</sup>")
+                   title=title_line)
     
     for idx in enumerate(fig2["data"]):
         if(idx[0] == 0):
@@ -179,9 +196,109 @@ def treina_genetico(dim=2, funcao='esfera', iteracoes=50, taxa_recomb=0.1, taxa_
     fig2.show()
 
 # 2.5 - Enxame de Partículas
-def enxame():
-    pass
+def enxame(x_matrix, funcao, iteracoes=50, inercia_max=0.2, inercia_min=0, cognicao_max=0.4, social_max=0.2):
+    avg_fitness = np.array([])
+    min_fitness = np.array([])
+    if(x_matrix.shape[1] == 2):
+        col = ['x', 'y', 'fitness', 'iter']
+    else:
+        col = ['x', 'y', 'z', 'fitness', 'iter']
+    df_evolution = pd.DataFrame(columns=col)
+    
+    x_pop = np.copy(x_matrix)
+    x_best_positions = np.copy(x_pop)
+    x_best_fitness = np.array([-funcao(i) for i in x_best_positions])
+    velocity = np.zeros((x_pop.shape))
+
+    time_init = time()
+
+    for i in range(iteracoes):
+        # Cálculo de Fitness e inserção no dataframe
+        x_fitness = np.array([-funcao(candidato) for candidato in x_pop]).reshape(-1, 1)
+        iter_atual = np.tile([i], x_matrix.shape[0]).reshape(-1, 1)
+        df_data = np.concatenate((x_pop, x_fitness, iter_atual), axis=1)
+        df_evolution = pd.concat([df_evolution, pd.DataFrame(df_data, columns=col)]).reset_index(drop=True)
+        # Captura de fitness médio e fitness mínimo por iteração
+        avg_fitness = np.append(avg_fitness, np.mean(x_fitness))
+        min_fitness = np.append(min_fitness, np.min(x_fitness))
+        # Cálculo de velocidade para cada candidato da população
+        rand1 = np.random.rand()
+        rand2 = np.random.rand()
+        inertia = inercia_max - ((inercia_max - inercia_min)/(i+1))
+        gbest = np.tile(x_best_positions[np.argmax(x_best_fitness)], (x_pop.shape[0], 1))
+        velocity = (inertia * velocity) + (cognicao_max * rand1 * (x_best_positions - x_pop)) + (social_max * rand2 * (gbest - x_pop))
+        # Atualização de posição de cada candidato
+        x_pop = x_pop + velocity
+        # Atualização de melhores posições
+        x_fitness = np.array([-funcao(candidato) for candidato in x_pop])
+        better_mask_fitness = np.array([x_fitness > x_best_fitness])
+        np.putmask(x_best_fitness, better_mask_fitness, x_fitness)
+        better_mask_positions = np.tile(better_mask_fitness, (x_pop.shape[1], 1))
+        np.putmask(x_best_positions, better_mask_positions, x_pop)
+        if(i == iteracoes - 1):
+             # Cálculo de Fitness e inserção no dataframe
+            x_fitness = x_fitness.reshape(-1, 1)
+            iter_atual = np.tile([i+1], x_matrix.shape[0]).reshape(-1, 1)
+            df_data = np.concatenate((x_pop, x_fitness, iter_atual), axis=1)
+            df_evolution = pd.concat([df_evolution, pd.DataFrame(df_data, columns=col)]).reset_index(drop=True)
+
+    elapsed_time = (time() - time_init) * 1000
+    fitness_metrics = np.concatenate(([avg_fitness], [min_fitness]), axis = 0).transpose()
+    df_fitness = pd.DataFrame(fitness_metrics)
+        
+    return df_evolution, df_fitness, elapsed_time   
 
 # 2.4 - Execução automatizada do Enxame de Partículas
-def treina_enxame():
-    pass
+def treina_enxame(dim=2, funcao='esfera', iteracoes=50, inercia_max=0.5, inercia_min=0.1, cognicao_max=0.4, social_max=0.6):
+    init = (np.random.rand(20, dim) * 60) - 30
+        
+    if(funcao == 'ackley'):
+        f = ackley
+        range_color = [-100, 0]
+    else:
+        f = esfera
+        range_color = [-1500, 0]
+
+    range_xyz = [-30, 30]
+    
+    df_evol, df_fit, train_time = enxame(init, f, iteracoes=50,
+                                         inercia_max=inercia_max, inercia_min=inercia_min,
+                                         cognicao_max=cognicao_max, social_max=social_max) 
+
+    
+    title_scatter = f"Evolução da pop. para {funcao} em R{dim} | Max. Cog. = {cognicao_max * 100}% "
+    title_scatter += f"| Max. Soc. = {social_max * 100}%<br>Min. Inércia. = {inercia_min} | "
+    title_scatter += f"Max. Inércia. = {inercia_max}<br><sup>Tempo gasto para {iteracoes} iterações: "
+    title_scatter += f"{train_time:.3f} ms</sup>"
+
+    title_line = f"Evolução da aptidão para {funcao} em R{dim} | Max. Cog. = {cognicao_max * 100}% "
+    title_line += f"| Max. Soc. = {social_max * 100}%<br>Min. Inércia. = {inercia_min} | "
+    title_line += f"Max. Inércia. = {inercia_max}<br><sup>Tempo gasto para {iteracoes} iterações: "
+    title_line += f"{train_time:.3f} ms</sup>"
+
+    if(dim == 3):
+        fig1 = px.scatter_3d(df_evol, x='x', y='y', z='z', color='fitness', animation_frame='iter',
+                        color_continuous_scale=px.colors.sequential.YlGnBu,
+                        range_y=range_xyz, range_x=range_xyz, range_z=range_xyz, range_color=range_color,
+                        title=title_scatter)
+    else:
+        fig1 = px.scatter(df_evol, x='x', y='y', color='fitness', animation_frame='iter',
+                        color_continuous_scale=px.colors.sequential.YlGnBu,
+                        range_y=range_xyz, range_x=range_xyz, range_color=range_color,
+                        title=title_scatter)
+
+    fig2 = px.line(df_fit, category_orders={"variable": ["Média", "Mínima"]},
+                   title=title_line)
+    
+    for idx in enumerate(fig2["data"]):
+        if(idx[0] == 0):
+            idx[1]["name"] = "Média"
+        elif(idx[0] == 1):
+            idx[1]["name"] = "Mínima"
+        
+    fig2.update_xaxes(title_text='Iterações')
+    fig2.update_yaxes(title_text='Aptidão')
+    fig2.update_layout(legend_title_text='Aptidão')
+    
+    fig1.show()
+    fig2.show()
