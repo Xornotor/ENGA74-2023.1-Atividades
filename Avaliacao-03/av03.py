@@ -1,3 +1,9 @@
+# Módulo da Avaliação 3 - ENGA74 2023.1
+# Alunos:
+# André Paiva Conrado Rodrigues
+# Pedro Augusto Dultra Neves Correia
+
+
 from time import time
 import numpy as np
 from numpy.random import rand
